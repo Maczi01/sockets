@@ -1,0 +1,15 @@
+<Configuration status="info">
+    <Properties>
+        <Property name="layout">%d{HH:mm:ss} %highlight{%-5p}{INFO=blue, ERROR=red} %m%n</Property>
+    </Properties>
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${layout}" />
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="Console" />
+        </Root>
+    </Loggers>
+</Configuration>
