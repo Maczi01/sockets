@@ -1,0 +1,280 @@
+====================
+FILE: src\main\java\Client.java
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.util.Scanner;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+public class Client {
+
+  private static final Logger logger = LogManager.getLogger(Client.class);
+  private static final Scanner scanner = new Scanner(System.in);
+  private static final ObjectMapper mapper = new ObjectMapper();
+  private static final String CLIENT_IP = "127.0.0.1";
+  private static final int PORT = 5000;
+
+  public static void main(String[] args) {
+
+    Client client = new Client();
+    try {
+      client.startConnection();
+    } catch (RuntimeException | IOException e) {
+      logger.error("connection error" + e.getMessage());
+    }
+  }
+
+  public void startConnection() throws IOException {
+    try (
+        Socket clientSocket = new Socket(CLIENT_IP, PORT);
+        PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+        BufferedReader in = new BufferedReader(
+            new InputStreamReader(clientSocket.getInputStream()))
+    ) {
+      logger.info("Client successfully connected");
+      String input;
+      while (!clientSocket.isClosed()) {
+        logger.info("Type one of the options: \n uptime \n info \n help \n stop \n");
+        input = scanner.nextLine();
+        try {
+          Command command = Command.valueOf(input.trim().toUpperCase());
+          switch (command) {
+            case UPTIME, INFO, HELP -> messageServer(out, in, command);
+            case STOP -> {
+              messageServer(out, in, command);
+              logger.info("connection stopped");
+              return;
+            }
+            default -> logger.info("request unknown");
+          }
+        } catch (IllegalArgumentException e) {
+          logger.error("Invalid command: " + input);
+          logger.info("Incorrect command, try again.");
+        }
+      }
+    }
+  }
+
+  private void messageServer(PrintWriter out, BufferedReader in, Command command) {
+    out.println(command);
+    try {
+      String resp = in.readLine();
+      handleResponse(resp);
+    } catch (IOException e) {
+      logger.error("Error reading message from server: " + e.getMessage());
+      throw new RuntimeException(e);
+    }
+  }
+
+  public void handleResponse(String jsonResp) {
+    try {
+      JsonNode rootNode = mapper.readTree(jsonResp);
+      String prettyString = rootNode.toPrettyString();
+      logger.info(prettyString);
+    } catch (IOException e) {
+      logger.error("Error processing JSON response: " + e.getMessage());
+    }
+  }
+}
+====================
+FILE: src\main\java\Command.java
+
+public enum Command {
+  UPTIME("uptime"),
+  INFO("info"),
+  HELP("help"),
+  STOP("stop");
+
+  private final String command;
+
+  Command(String command) {
+    this.command = command;
+  }
+
+  public String getCommand() {
+    return command;
+  }
+}
+====================
+FILE: src\main\java\Response.java
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class Response {
+
+  private final ObjectMapper mapper = new ObjectMapper();
+
+  public String calculateServerTime(Instant startTime) throws JsonProcessingException {
+    Duration serverUptime = Duration.between(startTime, Instant.now());
+    int hours = serverUptime.toHoursPart();
+    int minutes = serverUptime.toMinutesPart();
+    int seconds = serverUptime.toSecondsPart();
+
+    String uptimeMessage = String.format("Server was started %d hours, %d minutes, %d seconds ago",
+        hours, minutes, seconds);
+    Map<String, String> uptimeResponse = new ConcurrentHashMap<>();
+    uptimeResponse.put("info", uptimeMessage);
+
+    return mapper.writeValueAsString(uptimeResponse);
+  }
+
+  public String getCommands(Map<String, String> commandsInfo)
+      throws JsonProcessingException {
+    return mapper.writeValueAsString(commandsInfo);
+  }
+
+  public String getInformation(Map<String, String> information) throws JsonProcessingException {
+    return mapper.writeValueAsString(information);
+  }
+}
+
+====================
+FILE: src\main\java\Server.java
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+public class Server {
+
+  private static final Logger logger = LogManager.getLogger(Server.class);
+  private final ServerSocket server;
+  private final Instant creationTime;
+  private static final int PORT = 5000;
+  private final Storage storage;
+  private final Response response = new Response();
+  private final ObjectMapper objectMapper = new ObjectMapper();
+
+  public Server() {
+    try {
+      server = new ServerSocket(PORT);
+    } catch (IOException e) {
+      logger.error("Error creating server: " + e.getMessage());
+      throw new RuntimeException(e);
+    }
+    storage = new Storage();
+    creationTime = Instant.now();
+    logger.info("Server successfully started on port " + PORT);
+  }
+
+  public static void main(String[] args) {
+    Server server = new Server();
+    try {
+      server.run();
+    } catch (RuntimeException e) {
+      logger.error("Error starting connection: " + e.getMessage());
+    }
+  }
+
+  public void run() {
+    try (
+        Socket client = server.accept();
+        PrintWriter output = new PrintWriter(new OutputStreamWriter(client.getOutputStream()),
+            true);
+        BufferedReader input = new BufferedReader(new InputStreamReader(client.getInputStream()))
+    ) {
+      logger.info("Client connected");
+      String nextLine;
+      while (!Objects.isNull(nextLine = input.readLine())) {
+        logger.info("Incoming request: " + nextLine);
+        try {
+          Command command = parseCommand(nextLine.trim().toUpperCase());
+          if (command == null) {
+            output.println("{\"error\": \"Incorrect command, try again\"}");
+          } else {
+            String response = handleRequest(command);
+            output.println(response);
+          }
+        } catch (JsonProcessingException e) {
+          logger.error("Error processing request: " + e.getMessage());
+          output.println("{\"error\": \"Internal server error\"}");
+        }
+      }
+    } catch (IOException e) {
+      logger.error("Cannot connect client: " + e.getMessage());
+      throw new RuntimeException(e);
+    }
+  }
+
+  private Command parseCommand(String commandStr) {
+    try {
+      return Command.valueOf(commandStr);
+    } catch (IllegalArgumentException e) {
+      logger.error("Invalid command: " + commandStr);
+      return null;
+    }
+  }
+
+  public String handleRequest(Command request) throws JsonProcessingException {
+    return switch (request) {
+      case UPTIME -> response.calculateServerTime(creationTime);
+      case HELP -> response.getCommands(storage.getCommands());
+      case INFO -> response.getInformation(storage.getInformation());
+      case STOP -> stopServer();
+    };
+  }
+
+  private String stopServer() {
+    try {
+      server.close();
+      logger.info("Connection closed");
+      Map<String, String> result = Map.of("message", "Connection closed");
+      return objectMapper.writeValueAsString(result);
+    } catch (IOException e) {
+      logger.error("Error closing server: " + e.getMessage());
+      throw new RuntimeException(e);
+    }
+  }
+}
+
+====================
+FILE: src\main\java\Storage.java
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class Storage {
+
+  private final Map<String, String> information = new ConcurrentHashMap<>();
+  private final Map<String, String> commands = new ConcurrentHashMap<>();
+
+  public Storage() {
+    commands.put("uptime", "Show server uptime");
+    commands.put("info", "Show server information");
+    commands.put("help", "Show list of available commands");
+    commands.put("stop", "Stop server");
+    information.put("version", "0.1.0");
+    information.put("creation date", "06.06.2024");
+  }
+
+  public Map<String, String> getCommands() {
+    return commands;
+  }
+
+  public Map<String, String> getInformation() {
+    return information;
+  }
+}
+
