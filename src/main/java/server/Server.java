@@ -83,7 +83,7 @@ public class Server {
     }
   }
 
-  public String handleRequest(String request, String payload) throws JsonProcessingException {
+  public String handleRequest(String request, String payload) throws IOException {
     return switch (request) {
       case "UPTIME" -> response.calculateServerTime(creationTime);
       case "HELP" -> response.getCommands(storage.getCommands());

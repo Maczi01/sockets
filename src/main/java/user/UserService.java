@@ -4,37 +4,27 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import database.Database;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 public class UserService {
 
-  private List<User> users;
   private final ObjectMapper objectMapper = new ObjectMapper();
   private static final Logger logger = LogManager.getLogger(UserService.class);
   private final Database database = new Database();
 
-  public UserService() {
-    this.users = new ArrayList<>();
-    users.add(new User("admin", "admin", Role.ADMIN));
-    users.add(new User("user", "user", Role.USER));
-
-    Map<String, User> userMap = users.stream().collect(Collectors.toMap(User::getUsername, user -> user));
-    database.save(userMap);
+  public User getUser(String username) throws IOException {
+    return database.load().get(username);
   }
 
-  public User getUser(String username) {
-    Optional<User> first = users.stream().filter(user -> user.getUsername().equals(username))
-        .findFirst();
-    return first.orElse(null);
-  }
-
-  public String getUsers() {
+  public String getUsers() throws IOException {
+    Map<String, User> users = database.load()
+        .entrySet()
+        .stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, entry -> new User(entry.getValue().getUsername(), entry.getValue().getRole())));
     if (users.isEmpty()) {
       return "{\"message\": \"No users in the list\"}";
     }
@@ -48,34 +38,42 @@ public class UserService {
   public String addUser(String userJson) {
     try {
       User user = objectMapper.readValue(userJson, User.class);
-      users.add(user);
+      Map<String, User> users = database.load();
+      users.put(user.getUsername(), user);
+      database.save(users);
       return "{\"message\": \"User added successfully\"}";
     } catch (JsonProcessingException e) {
+      return "{\"error\": \"Unable to add user\"}";
+    } catch (IOException e) {
+      e.printStackTrace();
       return "{\"error\": \"Unable to add user\"}";
     }
   }
 
   public String removeUser(String userName) {
-    Optional<User> first = users.stream().filter(user -> user.getUsername().equals(userName))
-        .findFirst();
-    if (first.isPresent()) {
-      users.remove(first.get());
+
+    try {
+      Map<String, User> users = database.load();
+      users.remove(userName);
+      database.save(users);
       return "{\"message\": \"User removed successfully\"}";
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "{\"error\": \"User not found\"}";
     }
-    return "{\"error\": \"User not found\"}";
   }
 
-  public String loginUser(String userJson) {
+  public String loginUser(String userJson) throws IOException {
     try {
       User user = objectMapper.readValue(userJson, User.class);
       logger.info("Login user: " + user);
-      Optional<User> first = users.stream().filter(u -> u.getUsername()
-          .equals(user.getUsername().toLowerCase())).findFirst();
-      if (first.isEmpty()) {
+      User user1 = database.load().get(user.getUsername());
+      if (user1 == null) {
         return "{\"error\": \"User not found\"}";
       } else {
-        if (first.get().getPassword().equals(user.getPassword())){
-          String roleResponse = String.format("{\"message\": \"User logged in successfully\", \"role\": \"%s\"}", first.get().getRole());
+        if (user1.getPassword().equals(user.getPassword())) {
+          String roleResponse = String.format(
+              "{\"message\": \"User logged in successfully\", \"role\": \"%s\"}", user1.getRole());
           return roleResponse;
         } else {
           return "{\"error\": \"Invalid credentials\"}";

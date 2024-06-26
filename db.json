@@ -10,5 +10,16 @@
     "password" : "user",
     "role" : "USER",
     "messages" : [ ]
+  },
+  "example" : {
+    "username" : "example",
+    "password" : "example",
+    "role" : "ADMIN",
+    "messages" : [ {
+      "content" : "example",
+      "sender" : "admin",
+      "receiver" : "example",
+      "createdDate" : 1719417151839
+    } ]
   }
 }

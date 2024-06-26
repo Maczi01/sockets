@@ -23,6 +23,11 @@ public class User {
     this.messages = new ArrayList<>();
   }
 
+  public User(String username, Role role) {
+    this.username = username;
+    this.role = role;
+  }
+
   public String getUsername() {
     return username;
   }
