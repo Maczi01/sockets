@@ -1,3 +1,5 @@
+package server;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Duration;
@@ -15,7 +17,7 @@ public class Response {
     int minutes = serverUptime.toMinutesPart();
     int seconds = serverUptime.toSecondsPart();
 
-    String uptimeMessage = String.format("Server was started %d hours, %d minutes, %d seconds ago",
+    String uptimeMessage = String.format("server.Server was started %d hours, %d minutes, %d seconds ago",
         hours, minutes, seconds);
     Map<String, String> uptimeResponse = new ConcurrentHashMap<>();
     uptimeResponse.put("info", uptimeMessage);

@@ -1,3 +1,5 @@
+package server;
+
 public enum Command {
   UPTIME("uptime"),
   INFO("info"),

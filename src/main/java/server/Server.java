@@ -1,3 +1,5 @@
+package server;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
@@ -10,8 +12,10 @@ import java.net.Socket;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import message.MessageService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import user.UserService;
 
 public class Server {
 
@@ -20,6 +24,8 @@ public class Server {
   private final Instant creationTime;
   private static final int PORT = 5000;
   private final Storage storage;
+  private final UserService userService;
+  private final MessageService messageService = new MessageService();
   private final Response response = new Response();
   private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -31,6 +37,7 @@ public class Server {
       throw new RuntimeException(e);
     }
     storage = new Storage();
+    userService = new UserService();
     creationTime = Instant.now();
     logger.info("Server successfully started on port " + PORT);
   }
@@ -47,8 +54,7 @@ public class Server {
   public void run() {
     try (
         Socket client = server.accept();
-        PrintWriter output = new PrintWriter(new OutputStreamWriter(client.getOutputStream()),
-            true);
+        PrintWriter output = new PrintWriter(new OutputStreamWriter(client.getOutputStream()), true);
         BufferedReader input = new BufferedReader(new InputStreamReader(client.getInputStream()))
     ) {
       logger.info("Client connected");
@@ -56,11 +62,14 @@ public class Server {
       while (!Objects.isNull(nextLine = input.readLine())) {
         logger.info("Incoming request: " + nextLine);
         try {
-          Command command = parseCommand(nextLine.trim().toUpperCase());
+          String[] commandParts = nextLine.trim().split(" ", 2);
+          String command = commandParts[0].toUpperCase();
+          String payload = commandParts.length > 1 ? commandParts[1] : null;
+
           if (command == null) {
             output.println("{\"error\": \"Incorrect command, try again\"}");
           } else {
-            String response = handleRequest(command);
+            String response = handleRequest(command, payload);
             output.println(response);
           }
         } catch (JsonProcessingException e) {
@@ -74,21 +83,19 @@ public class Server {
     }
   }
 
-  private Command parseCommand(String commandStr) {
-    try {
-      return Command.valueOf(commandStr);
-    } catch (IllegalArgumentException e) {
-      logger.error("Invalid command: " + commandStr);
-      return null;
-    }
-  }
-
-  public String handleRequest(Command request) throws JsonProcessingException {
+  public String handleRequest(String request, String payload) throws JsonProcessingException {
     return switch (request) {
-      case UPTIME -> response.calculateServerTime(creationTime);
-      case HELP -> response.getCommands(storage.getCommands());
-      case INFO -> response.getInformation(storage.getInformation());
-      case STOP -> stopServer();
+      case "UPTIME" -> response.calculateServerTime(creationTime);
+      case "HELP" -> response.getCommands(storage.getCommands());
+      case "INFO" -> response.getInformation(storage.getInformation());
+      case "USERS" -> userService.getUsers();
+      case "ADD_USER" -> userService.addUser(payload);
+      case "REMOVE_USER" -> userService.removeUser(payload);
+      case "LOGIN" -> userService.loginUser(payload);
+      case "STOP" -> stopServer();
+      case "READ_MESSAGES" -> messageService.readMessages(payload);
+      case "SEND_MESSAGE" -> messageService.sendMessage(payload);
+      default -> "{\"error\": \"Incorrect command, try again\"}";
     };
   }
 
@@ -104,3 +111,4 @@ public class Server {
     }
   }
 }
+

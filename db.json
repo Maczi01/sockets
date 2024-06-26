@@ -1,0 +1,14 @@
+{
+  "admin" : {
+    "username" : "admin",
+    "password" : "admin",
+    "role" : "ADMIN",
+    "messages" : [ ]
+  },
+  "user" : {
+    "username" : "user",
+    "password" : "user",
+    "role" : "USER",
+    "messages" : [ ]
+  }
+}
