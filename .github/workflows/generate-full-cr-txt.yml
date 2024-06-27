@@ -22,14 +22,15 @@ jobs:
         run: node createTXTfile.js
 
       - name: Commit full.cr.txt
-        env:
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN_SOCKETS }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          clean_token=$(echo $PERSONAL_ACCESS_TOKEN | tr -d '\n')
-          git remote set-url origin "https://x-access-token:${clean_token}@github.com/${{ github.repository }}.git"
-          git remote -v # Print the remote URL for debugging
           git add full.cr.txt
-          git commit -m 'Update full.cr.txt'
-          git push origin HEAD:master
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m 'Update full.cr.txt'
+            git push
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
