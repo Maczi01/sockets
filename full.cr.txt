@@ -1,5 +1,55 @@
 ====================
-FILE: src\main\java\client.Client.java
+FILE: src/main/java/client/Client.java
+
+package client;
+
+import java.io.IOException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+class Client {
+
+  private static final Logger logger = LogManager.getLogger(Client.class);
+  private static final ClientFacade clientFacade = new ClientFacade();
+
+  public static void main(String[] args) {
+    try {
+      clientFacade.startConnection();
+      clientFacade.handleUserInput();
+    } catch (IOException e) {
+      logger.error("Connection error " + e.getMessage());
+    } finally {
+      try {
+        clientFacade.stopConnection();
+      } catch (IOException e) {
+        logger.error("Error closing connection: " + e.getMessage());
+      }
+    }
+  }
+}
+====================
+FILE: src/main/java/client/ClientCommand.java
+
+package client;
+
+enum ClientCommand {
+  UPTIME("UPTIME"),
+  INFO("INFO"),
+  HELP("HELP"),
+  REMOVE_USER("REMOVE_USER"),
+  USERS("USERS"),
+  SEND_MESSAGE("SEND_MESSAGE"),
+  LOGIN("LOGIN"),
+  READ_MESSAGES("READ_MESSAGES"),
+  ADD_USER("ADD_USER");
+
+  ClientCommand(String info) {}
+}
+
+====================
+FILE: src/main/java/client/ClientFacade.java
+
+package client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,68 +61,239 @@ import java.net.Socket;
 import java.util.Scanner;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import user.Role;
+import user.UserSession;
 
-public class client.Client {
+class ClientFacade {
 
-  private static final Logger logger = LogManager.getLogger(client.Client.class);
+  private static final Logger logger = LogManager.getLogger(ClientFacade.class);
   private static final Scanner scanner = new Scanner(System.in);
   private static final ObjectMapper mapper = new ObjectMapper();
   private static final String CLIENT_IP = "127.0.0.1";
   private static final int PORT = 5000;
+  private static final UserSession session = new UserSession();
+  private Socket clientSocket;
+  private PrintWriter out;
+  private BufferedReader in;
 
-  public static void main(String[] args) {
+  void startConnection() throws IOException {
+    clientSocket = new Socket(CLIENT_IP, PORT);
+    out = new PrintWriter(clientSocket.getOutputStream(), true);
+    in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+    logger.info("Client successfully connected");
+  }
 
-    client.Client client = new client.Client();
-    try {
-      client.startConnection();
-    } catch (RuntimeException | IOException e) {
-      logger.error("connection error" + e.getMessage());
+  void stopConnection() throws IOException {
+    if (clientSocket != null) {
+      clientSocket.close();
+      logger.info("Client disconnected");
     }
   }
 
-  public void startConnection() throws IOException {
-    try (
-        Socket clientSocket = new Socket(CLIENT_IP, PORT);
-        PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-        BufferedReader in = new BufferedReader(
-            new InputStreamReader(clientSocket.getInputStream()))
-    ) {
-      logger.info("client.Client successfully connected");
-      String input;
-      while (!clientSocket.isClosed()) {
-        logger.info("Type one of the options: \n uptime \n info \n help \n stop \n");
-        input = scanner.nextLine();
-        try {
-          server.ServerCommand command = server.ServerCommand.valueOf(input.trim().toUpperCase());
-          switch (command) {
-            case UPTIME, INFO, HELP -> messageServer(out, in, command);
-            case STOP -> {
-              messageServer(out, in, command);
-              logger.info("connection stopped");
-              return;
-            }
-            default -> logger.info("request unknown");
+  void handleUserInput() throws IOException {
+    String input;
+    while (!clientSocket.isClosed()) {
+      displayMenu();
+      input = scanner.nextLine();
+      try {
+        int commandNumber = Integer.parseInt(input.trim());
+        switch (commandNumber) {
+          case 1 -> manageUsers();
+          case 2 -> loginToApplication();
+          case 3 -> readMessages();
+          case 4 -> sendMessage();
+          case 5 -> logout();
+          case 9 -> manageApplicationInfo();
+          case 0 -> {
+            logger.info("Exiting application");
+            stopConnection();
+            return;
           }
-        } catch (IllegalArgumentException e) {
-          logger.error("Invalid command: " + input);
-          logger.info("Incorrect command, try again.");
+          default -> logger.info("Unknown request. Please enter a valid option.");
         }
+      } catch (NumberFormatException e) {
+        logger.error("Invalid input: " + input);
+        logger.info("Invalid input, please enter a number.");
       }
     }
   }
 
-  private void messageServer(PrintWriter out, BufferedReader in, server.ServerCommand command) {
+  private void displayMenu() {
+    if (session.isLoggedIn()) {
+      if (session.getRole() == Role.ADMIN) {
+        logger.info("Type one of the options: "
+            + "\n (1) - manage users"
+            + "\n (2) - login to application"
+            + "\n (3) - read messages"
+            + "\n (4) - send message"
+            + "\n (5) - logout"
+            + "\n (0) - exit"
+            + "\n");
+      } else {
+        logger.info("Type one of the options: "
+            + "\n (3) - read messages"
+            + "\n (4) - send message"
+            + "\n (5) - logout"
+            + "\n (0) - exit"
+            + "\n");
+      }
+    } else {
+      logger.info("Type one of the options: "
+          + "\n (1) - manage users"
+          + "\n (2) - login to application"
+          + "\n (9) - application info"
+          + "\n (0) - exit"
+          + "\n");
+    }
+  }
+
+  private void loginToApplication() {
+    if (session.isLoggedIn()) {
+      logger.info("You are already logged in");
+      return;
+    }
+    logger.info("Login to application");
+    logger.info("Enter username: ");
+    String username = scanner.nextLine().toLowerCase();
+    logger.info("Enter password: ");
+    String password = scanner.nextLine();
+    String userDetails = String.format("{\"username\":\"%s\", \"password\":\"%s\"}", username, password);
+    String response = messageServer("LOGIN " + userDetails);
+    if (response.contains("successfully")) {
+      try {
+        JsonNode rootNode = mapper.readTree(response);
+        String roleString = rootNode.path("role").asText();
+        Role role = Role.valueOf(roleString);
+        session.login(username, role);
+        logger.info("Login successful. Welcome, " + username + "!");
+      } catch (IOException e) {
+        logger.error("Error processing login response: " + e.getMessage());
+      }
+    } else {
+      logger.error("Login failed: " + response);
+    }
+  }
+
+  private void readMessages() {
+    if (session.isLoggedIn()) {
+      logger.info("Read messages");
+      String userDetails = String.format("{\"username\":\"%s\"}", session.getUsername());
+      messageServer(ClientCommand.READ_MESSAGES + " " + userDetails);
+    } else {
+      logger.info("You must be logged in to read messages.");
+    }
+  }
+
+  private void sendMessage() {
+    if (session.isLoggedIn()) {
+      logger.info("Send message");
+      logger.info("Enter message: ");
+      String content = scanner.nextLine();
+      logger.info("Enter receiver: ");
+      String receiver = scanner.nextLine();
+      String userDetails = String.format("{\"content\":\"%s\", \"sender\":\"%s\", \"receiver\":\"%s\"}", content, session.getUsername(), receiver);
+      messageServer(ClientCommand.SEND_MESSAGE + " " + userDetails);
+    } else {
+      logger.info("You must be logged in to send messages.");
+    }
+  }
+
+  private void manageUsers() {
+    if (session.isLoggedIn() && session.getRole() == Role.ADMIN) {
+      String userInput = "";
+      while (!"0".equals(userInput)) {
+        logger.info("Manage Users Menu: "
+            + "\n (1) - Show user list"
+            + "\n (2) - Add user"
+            + "\n (3) - Remove user"
+            + "\n (0) - Return to main menu"
+            + "\n");
+        userInput = scanner.nextLine();
+        try {
+          int userCommand = Integer.parseInt(userInput.trim());
+          switch (userCommand) {
+            case 1 -> {
+              logger.info("Show user list");
+              messageServer(ClientCommand.USERS.toString());
+            }
+            case 2 -> {
+              logger.info("Add user selected");
+              addUser();
+            }
+            case 3 -> {
+              logger.info("Remove user selected");
+              removeUser();
+            }
+            case 0 -> {
+              logger.info("Returning to main menu");
+              return;
+            }
+            default -> logger.info("Unknown request. Please enter 1, 2, 3, or 0.");
+          }
+        } catch (NumberFormatException e) {
+          logger.error("Invalid input: " + userInput);
+          logger.info("Invalid input, please enter a number (1, 2, 3, or 0).");
+        }
+      }
+    } else {
+      logger.info("You must be logged in as an admin to manage users.");
+    }
+  }
+
+  private void removeUser() {
+    logger.info("Enter username: ");
+    String username = scanner.nextLine();
+    messageServer(ClientCommand.REMOVE_USER + " " + username);
+  }
+
+  private void addUser() {
+    logger.info("Enter username: ");
+    String username = scanner.nextLine();
+    logger.info("Enter password: ");
+    String password = scanner.nextLine();
+    logger.info("Enter role (USER/ADMIN): ");
+    String roleString = scanner.nextLine().toUpperCase();
+    Role role = Role.valueOf(roleString);
+    String userDetails = String.format("{\"username\":\"%s\", \"password\":\"%s\", \"role\":\"%s\"}", username, password, role);
+    messageServer(ClientCommand.ADD_USER + " " + userDetails);
+  }
+
+  private void manageApplicationInfo() {
+    logger.info("Application Info Menu: "
+        + "\n (1) - Show server uptime"
+        + "\n (2) - Show server information"
+        + "\n (3) - Show list of available commands"
+        + "\n (0) - Return to main menu"
+        + "\n");
+    String userInput = scanner.nextLine();
+    try {
+      int userCommand = Integer.parseInt(userInput.trim());
+      switch (userCommand) {
+        case 1 -> messageServer(ClientCommand.UPTIME.toString());
+        case 2 -> messageServer(ClientCommand.INFO.toString());
+        case 3 -> messageServer(ClientCommand.HELP.toString());
+        case 0 -> logger.info("Returning to main menu");
+        default -> logger.info("Unknown request. Please enter 1, 2, 3 or 0.");
+      }
+    } catch (NumberFormatException e) {
+      logger.error("Invalid input: " + userInput);
+      logger.info("Invalid input, please enter a number (1, 2, 3 or 0).");
+    }
+  }
+
+  private String messageServer(String command) {
     out.println(command);
     try {
       String resp = in.readLine();
       handleResponse(resp);
+      return resp;
     } catch (IOException e) {
       logger.error("Error reading message from server: " + e.getMessage());
       throw new RuntimeException(e);
     }
   }
 
-  public void handleResponse(String jsonResp) {
+  private void handleResponse(String jsonResp) {
     try {
       JsonNode rootNode = mapper.readTree(jsonResp);
       String prettyString = rootNode.toPrettyString();
@@ -81,28 +302,191 @@ public class client.Client {
       logger.error("Error processing JSON response: " + e.getMessage());
     }
   }
-}
-====================
-FILE: src\main\java\server.ServerCommand.java
 
-public enum server.ServerCommand {
-  UPTIME("uptime"),
-  INFO("info"),
-  HELP("help"),
-  STOP("stop");
-
-  private final String command;
-
-  server.ServerCommand(String command) {
-    this.command = command;
-  }
-
-  public String getCommand() {
-    return command;
+  private void logout() {
+    if (session.isLoggedIn()) {
+      session.logout();
+      logger.info("Successfully logged out");
+    } else {
+      logger.info("You are not logged in");
+    }
   }
 }
+
 ====================
-FILE: src\main\java\server.Response.java
+FILE: src/main/java/database/Database.java
+
+package database;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import user.User;
+
+public class Database {
+
+  private final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private final String FILE_PATH = "./db.json";
+
+  public Map<String, User> load() throws IOException {
+    File file = new File(FILE_PATH);
+    if (file.exists() && file.length() != 0) {
+      return OBJECT_MAPPER.readValue(file, new TypeReference<Map<String, User>>() {
+      });
+    } else {
+      return new HashMap<>();
+    }
+  }
+
+  public void save(Map<String, User> users)  {
+    File file = new File(FILE_PATH);
+    OBJECT_MAPPER.enable(SerializationFeature.INDENT_OUTPUT);
+    try {
+      OBJECT_MAPPER.writerFor(new TypeReference<Map<String, User>>() {
+      }).writeValue(file, users);
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+  }
+}
+====================
+FILE: src/main/java/message/Message.java
+
+package message;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.Instant;
+import java.util.Date;
+
+public class Message {
+
+  private String content;
+  private String sender;
+  private String receiver;
+  private Date createdDate;
+
+  public Message(
+      @JsonProperty("content") String content,
+      @JsonProperty("sender") String sender,
+      @JsonProperty("receiver") String receiver) {
+    this.content = content;
+    this.sender = sender;
+    this.receiver = receiver;
+    this.createdDate = Date.from(Instant.now());
+  }
+
+  public String getContent() {
+    return content;
+  }
+
+  public void setContent(String content) {
+    this.content = content;
+  }
+
+  public String getSender() {
+    return sender;
+  }
+
+  public void setSender(String sender) {
+    this.sender = sender;
+  }
+
+  public String getReceiver() {
+    return receiver;
+  }
+
+  public void setReceiver(String receiver) {
+    this.receiver = receiver;
+  }
+
+  public Date getCreatedDate() {
+    return createdDate;
+  }
+
+  public void setCreatedDate(Date createdDate) {
+    this.createdDate = createdDate;
+  }
+}
+
+====================
+FILE: src/main/java/message/MessageService.java
+
+package message;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import database.Database;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import user.User;
+import user.UserService;
+
+public class MessageService {
+
+  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final UserService userService = new UserService();
+  private final Database database = new Database();
+  private static final int MAILBOX_SIZE = 2;
+  private static final int MESSAGE_SIZE = 255;
+
+  public String sendMessage(String payload) {
+    try {
+      Message message = objectMapper.readValue(payload, Message.class);
+      String receiver = message.getReceiver();
+      Map<String, User> users = database.load();
+      if (!users.containsKey(receiver)) {
+        return "{\"error\": \"Receiver not found\"}";
+      }
+      List<Message> messages = users.get(receiver).getMessages();
+      if (messages.size() >= MAILBOX_SIZE) {
+        return "{\"error\": \"Receiver mailbox is full, cannot send message\"}";
+      }
+      if(message.getContent().length() >= MESSAGE_SIZE){
+        return "{\"error\": \"Message is too long\"}";
+      }
+      messages.add(message);
+      database.save(users);
+      return "{\"message\": \"Message sent\"}";
+    } catch (JsonProcessingException e) {
+      e.printStackTrace();
+      return "{\"error\": \"Unable to sent message\"}";
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "{\"error\": \"Unable to sent message\"}";
+    }
+  }
+
+  public String readMessages(String payload) {
+    try {
+      String userName = objectMapper.readValue(payload, User.class).getUsername();
+      User user = userService.getUser(userName);
+      if (user == null) {
+        return "{\"error\": \"User not found\"}";
+      }
+      List<Message> messages = user.getMessages().stream().toList();
+      if (messages.isEmpty()) {
+        return "{\"message\": \"Mailbox is empty\"}";
+      }
+      return objectMapper.writeValueAsString(messages);
+    } catch (JsonProcessingException e) {
+      e.printStackTrace();
+      return "{\"error\": \"Unable to process messages\"}";
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "{\"error\": \"Unable to process messages\"}";
+    }
+  }
+}
+
+====================
+FILE: src/main/java/server/Response.java
+
+package server;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -111,7 +495,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class server.Response {
+public class Response {
 
   private final ObjectMapper mapper = new ObjectMapper();
 
@@ -140,10 +524,11 @@ public class server.Response {
 }
 
 ====================
-FILE: src\main\java\server.Server.java
+FILE: src/main/java/server/Server.java
+
+package server;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -152,35 +537,34 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Objects;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import user.UserService;
 
-public class server.Server {
+public class Server {
 
-  private static final Logger logger = LogManager.getLogger(server.Server.class);
+  private static final Logger logger = LogManager.getLogger(Server.class);
   private final ServerSocket server;
-  private final Instant creationTime;
   private static final int PORT = 5000;
-  private final server.Storage storage;
-  private final server.Response response = new server.Response();
-  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final ServerFacade serverFacade;
 
-  public server.Server() {
+  public Server() {
     try {
       server = new ServerSocket(PORT);
     } catch (IOException e) {
       logger.error("Error creating server: " + e.getMessage());
       throw new RuntimeException(e);
     }
-    storage = new server.Storage();
-    creationTime = Instant.now();
-    logger.info("server.Server successfully started on port " + PORT);
+    Storage storage = new Storage();
+    UserService userService = new UserService();
+    Instant creationTime = Instant.now();
+    serverFacade = new ServerFacade(storage, userService, creationTime);
+    logger.info("Server successfully started on port " + PORT);
   }
 
   public static void main(String[] args) {
-    server.Server server = new server.Server();
+    Server server = new Server();
     try {
       server.run();
     } catch (RuntimeException e) {
@@ -191,20 +575,22 @@ public class server.Server {
   public void run() {
     try (
         Socket client = server.accept();
-        PrintWriter output = new PrintWriter(new OutputStreamWriter(client.getOutputStream()),
-            true);
+        PrintWriter output = new PrintWriter(new OutputStreamWriter(client.getOutputStream()), true);
         BufferedReader input = new BufferedReader(new InputStreamReader(client.getInputStream()))
     ) {
-      logger.info("client.Client connected");
+      logger.info("Client connected");
       String nextLine;
       while (!Objects.isNull(nextLine = input.readLine())) {
         logger.info("Incoming request: " + nextLine);
         try {
-          server.ServerCommand command = parseCommand(nextLine.trim().toUpperCase());
+          String[] commandParts = nextLine.trim().split(" ", 2);
+          String command = commandParts[0].toUpperCase();
+          String payload = commandParts.length > 1 ? commandParts[1] : null;
+
           if (command == null) {
             output.println("{\"error\": \"Incorrect command, try again\"}");
           } else {
-            String response = handleRequest(command);
+            String response = serverFacade.handleRequest(command, payload);
             output.println(response);
           }
         } catch (JsonProcessingException e) {
@@ -217,32 +603,86 @@ public class server.Server {
       throw new RuntimeException(e);
     }
   }
+}
 
-  private server.ServerCommand parseCommand(String commandStr) {
-    try {
-      return server.ServerCommand.valueOf(commandStr);
-    } catch (IllegalArgumentException e) {
-      logger.error("Invalid command: " + commandStr);
-      return null;
-    }
+====================
+FILE: src/main/java/server/ServerCommand.java
+
+package server;
+
+public enum ServerCommand {
+  UPTIME,
+  INFO,
+  HELP,
+  REMOVE_USER,
+  USERS,
+  SEND_MESSAGE,
+  LOGIN,
+  READ_MESSAGES,
+  ADD_USER,
+  STOP;
+}
+
+====================
+FILE: src/main/java/server/ServerFacade.java
+
+package server;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Map;
+import message.MessageService;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import user.UserService;
+
+public class ServerFacade {
+
+  private static final Logger logger = LogManager.getLogger(ServerFacade.class);
+  private final Instant creationTime;
+  private final Storage storage;
+  private final UserService userService;
+  private final MessageService messageService = new MessageService();
+  private final Response response = new Response();
+  private final ObjectMapper objectMapper = new ObjectMapper();
+
+  public ServerFacade(Storage storage, UserService userService, Instant creationTime) {
+    this.storage = storage;
+    this.userService = userService;
+    this.creationTime = creationTime;
   }
 
-  public String handleRequest(server.ServerCommand request) throws JsonProcessingException {
-    return switch (request) {
+  public String handleRequest(String request, String payload) throws IOException {
+    ServerCommand command;
+    try {
+      command = ServerCommand.valueOf(request.toUpperCase());
+    } catch (IllegalArgumentException e) {
+      return "{\"error\": \"Incorrect command, try again\"}";
+    }
+
+    return switch (command) {
       case UPTIME -> response.calculateServerTime(creationTime);
       case HELP -> response.getCommands(storage.getCommands());
       case INFO -> response.getInformation(storage.getInformation());
+      case USERS -> userService.getUsers();
+      case ADD_USER -> userService.addUser(payload);
+      case REMOVE_USER -> userService.removeUser(payload);
+      case LOGIN -> userService.loginUser(payload);
       case STOP -> stopServer();
+      case READ_MESSAGES -> messageService.readMessages(payload);
+      case SEND_MESSAGE -> messageService.sendMessage(payload);
+      default -> "{\"error\": \"Incorrect command, try again\"}";
     };
   }
 
   private String stopServer() {
     try {
-      server.close();
       logger.info("Connection closed");
       Map<String, String> result = Map.of("message", "Connection closed");
       return objectMapper.writeValueAsString(result);
-    } catch (IOException e) {
+    } catch (JsonProcessingException e) {
       logger.error("Error closing server: " + e.getMessage());
       throw new RuntimeException(e);
     }
@@ -250,17 +690,19 @@ public class server.Server {
 }
 
 ====================
-FILE: src\main\java\server.Storage.java
+FILE: src/main/java/server/Storage.java
+
+package server;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class server.Storage {
+public class Storage {
 
   private final Map<String, String> information = new ConcurrentHashMap<>();
   private final Map<String, String> commands = new ConcurrentHashMap<>();
 
-  public server.Storage() {
+  public Storage() {
     commands.put("uptime", "Show server uptime");
     commands.put("info", "Show server information");
     commands.put("help", "Show list of available commands");
@@ -275,6 +717,202 @@ public class server.Storage {
 
   public Map<String, String> getInformation() {
     return information;
+  }
+}
+
+====================
+FILE: src/main/java/user/Role.java
+
+package user;
+
+public enum Role {
+  USER, ADMIN
+}
+
+====================
+FILE: src/main/java/user/User.java
+
+package user;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.ArrayList;
+import java.util.List;
+import message.Message;
+
+public class User {
+
+  private String username;
+  private String password;
+  private Role role;
+  private List<Message> messages;
+
+  public User(
+      @JsonProperty("username") String username,
+      @JsonProperty("password") String password,
+      @JsonProperty("role") Role role) {
+    this.username = username;
+    this.password = password;
+    this.role = role != null ? role : Role.USER;
+    this.messages = new ArrayList<>();
+  }
+
+  public User(String username, Role role) {
+    this.username = username;
+    this.role = role;
+  }
+
+  public String getUsername() {
+    return username;
+  }
+
+  public String getPassword() {
+    return password;
+  }
+
+  public Role getRole() {
+    return role;
+  }
+
+  public List<Message> getMessages() {
+    return messages;
+  }
+
+  @Override
+  public String toString() {
+    return "User{" +
+        "username='" + username + '\'' +
+        ", password='" + password + '\'' +
+        ", role=" + role +
+        '}';
+  }
+}
+====================
+FILE: src/main/java/user/UserService.java
+
+package user;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import database.Database;
+import java.io.IOException;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+public class UserService {
+
+  private final ObjectMapper objectMapper = new ObjectMapper();
+  private static final Logger logger = LogManager.getLogger(UserService.class);
+  private final Database database = new Database();
+
+  public User getUser(String username) throws IOException {
+    return database.load().get(username);
+  }
+
+  public String getUsers() throws IOException {
+    Map<String, User> users = database.load()
+        .entrySet()
+        .stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, entry -> new User(entry.getValue().getUsername(), entry.getValue().getRole())));
+    if (users.isEmpty()) {
+      return "{\"message\": \"No users in the list\"}";
+    }
+    try {
+      return objectMapper.writeValueAsString(users);
+    } catch (JsonProcessingException e) {
+      return "{\"error\": \"Unable to process users list\"}";
+    }
+  }
+
+  public String addUser(String userJson) {
+    try {
+      User user = objectMapper.readValue(userJson, User.class);
+      Map<String, User> users = database.load();
+      users.put(user.getUsername(), user);
+      database.save(users);
+      return "{\"message\": \"User added successfully\"}";
+    } catch (JsonProcessingException e) {
+      return "{\"error\": \"Unable to add user\"}";
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "{\"error\": \"Unable to add user\"}";
+    }
+  }
+
+  public String removeUser(String userName) {
+
+    try {
+      Map<String, User> users = database.load();
+      users.remove(userName);
+      database.save(users);
+      return "{\"message\": \"User removed successfully\"}";
+    } catch (IOException e) {
+      e.printStackTrace();
+      return "{\"error\": \"User not found\"}";
+    }
+  }
+
+  public String loginUser(String userJson) throws IOException {
+    try {
+      User user = objectMapper.readValue(userJson, User.class);
+      logger.info("Login user: " + user);
+      User user1 = database.load().get(user.getUsername());
+      if (user1 == null) {
+        return "{\"error\": \"User not found\"}";
+      } else {
+        if (user1.getPassword().equals(user.getPassword())) {
+          String roleResponse = String.format(
+              "{\"message\": \"User logged in successfully\", \"role\": \"%s\"}", user1.getRole());
+          return roleResponse;
+        } else {
+          return "{\"error\": \"Invalid credentials\"}";
+        }
+      }
+    } catch (JsonProcessingException e) {
+      return "{\"error\": \"Unable to process login request\"}";
+    }
+  }
+}
+
+====================
+FILE: src/main/java/user/UserSession.java
+
+package user;
+
+public class UserSession {
+  private boolean loggedIn;
+  private String username;
+  private Role role;
+
+  public UserSession() {
+    this.loggedIn = false;
+    this.username = null;
+    this.role = Role.USER;
+  }
+
+  public boolean isLoggedIn() {
+    return loggedIn;
+  }
+
+  public void login(String username, Role role) {
+    this.loggedIn = true;
+    this.username = username;
+    this.role = role;
+  }
+
+  public void logout() {
+    this.loggedIn = false;
+    this.username = null;
+    this.role = Role.USER;
+  }
+
+  public String getUsername() {
+    return username;
+  }
+
+  public Role getRole() {
+    return role;
   }
 }
 
