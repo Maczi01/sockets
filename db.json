@@ -3,23 +3,22 @@
     "username" : "admin",
     "password" : "admin",
     "role" : "ADMIN",
-    "messages" : [ ]
+    "messages" : [ {
+      "content" : "hi admin",
+      "sender" : "admin",
+      "receiver" : "admin",
+      "createdDate" : 1719421429587
+    } ]
   },
   "user" : {
     "username" : "user",
     "password" : "user",
     "role" : "USER",
-    "messages" : [ ]
-  },
-  "example" : {
-    "username" : "example",
-    "password" : "example",
-    "role" : "ADMIN",
     "messages" : [ {
-      "content" : "example",
+      "content" : "hello, how are you?",
       "sender" : "admin",
-      "receiver" : "example",
-      "createdDate" : 1719417151839
+      "receiver" : "user",
+      "createdDate" : 1719472947218
     } ]
   }
 }

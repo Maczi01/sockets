@@ -1,7 +1,6 @@
 package server;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -10,9 +9,7 @@ import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Objects;
-import message.MessageService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import user.UserService;
@@ -21,13 +18,8 @@ public class Server {
 
   private static final Logger logger = LogManager.getLogger(Server.class);
   private final ServerSocket server;
-  private final Instant creationTime;
   private static final int PORT = 5000;
-  private final Storage storage;
-  private final UserService userService;
-  private final MessageService messageService = new MessageService();
-  private final Response response = new Response();
-  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final ServerFacade serverFacade;
 
   public Server() {
     try {
@@ -36,9 +28,10 @@ public class Server {
       logger.error("Error creating server: " + e.getMessage());
       throw new RuntimeException(e);
     }
-    storage = new Storage();
-    userService = new UserService();
-    creationTime = Instant.now();
+    Storage storage = new Storage();
+    UserService userService = new UserService();
+    Instant creationTime = Instant.now();
+    serverFacade = new ServerFacade(storage, userService, creationTime);
     logger.info("Server successfully started on port " + PORT);
   }
 
@@ -69,7 +62,7 @@ public class Server {
           if (command == null) {
             output.println("{\"error\": \"Incorrect command, try again\"}");
           } else {
-            String response = handleRequest(command, payload);
+            String response = serverFacade.handleRequest(command, payload);
             output.println(response);
           }
         } catch (JsonProcessingException e) {
@@ -82,33 +75,4 @@ public class Server {
       throw new RuntimeException(e);
     }
   }
-
-  public String handleRequest(String request, String payload) throws IOException {
-    return switch (request) {
-      case "UPTIME" -> response.calculateServerTime(creationTime);
-      case "HELP" -> response.getCommands(storage.getCommands());
-      case "INFO" -> response.getInformation(storage.getInformation());
-      case "USERS" -> userService.getUsers();
-      case "ADD_USER" -> userService.addUser(payload);
-      case "REMOVE_USER" -> userService.removeUser(payload);
-      case "LOGIN" -> userService.loginUser(payload);
-      case "STOP" -> stopServer();
-      case "READ_MESSAGES" -> messageService.readMessages(payload);
-      case "SEND_MESSAGE" -> messageService.sendMessage(payload);
-      default -> "{\"error\": \"Incorrect command, try again\"}";
-    };
-  }
-
-  private String stopServer() {
-    try {
-      server.close();
-      logger.info("Connection closed");
-      Map<String, String> result = Map.of("message", "Connection closed");
-      return objectMapper.writeValueAsString(result);
-    } catch (IOException e) {
-      logger.error("Error closing server: " + e.getMessage());
-      throw new RuntimeException(e);
-    }
-  }
 }
-

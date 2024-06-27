@@ -22,6 +22,9 @@ public class MessageService {
       Message message = objectMapper.readValue(payload, Message.class);
       String receiver = message.getReceiver();
       Map<String, User> users = database.load();
+      if (!users.containsKey(receiver)) {
+        return "{\"error\": \"Receiver not found\"}";
+      }
       List<Message> messages = users.get(receiver).getMessages();
       if (messages.size() >= MAILBOX_SIZE) {
         return "{\"error\": \"Receiver mailbox is full, cannot send message\"}";

@@ -4,7 +4,7 @@ import java.io.IOException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-public class Client {
+class Client {
 
   private static final Logger logger = LogManager.getLogger(Client.class);
   private static final ClientFacade clientFacade = new ClientFacade();

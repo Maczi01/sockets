@@ -43,7 +43,7 @@ public class client.Client {
         logger.info("Type one of the options: \n uptime \n info \n help \n stop \n");
         input = scanner.nextLine();
         try {
-          server.Command command = server.Command.valueOf(input.trim().toUpperCase());
+          server.ServerCommand command = server.ServerCommand.valueOf(input.trim().toUpperCase());
           switch (command) {
             case UPTIME, INFO, HELP -> messageServer(out, in, command);
             case STOP -> {
@@ -61,7 +61,7 @@ public class client.Client {
     }
   }
 
-  private void messageServer(PrintWriter out, BufferedReader in, server.Command command) {
+  private void messageServer(PrintWriter out, BufferedReader in, server.ServerCommand command) {
     out.println(command);
     try {
       String resp = in.readLine();
@@ -83,9 +83,9 @@ public class client.Client {
   }
 }
 ====================
-FILE: src\main\java\server.Command.java
+FILE: src\main\java\server.ServerCommand.java
 
-public enum server.Command {
+public enum server.ServerCommand {
   UPTIME("uptime"),
   INFO("info"),
   HELP("help"),
@@ -93,7 +93,7 @@ public enum server.Command {
 
   private final String command;
 
-  server.Command(String command) {
+  server.ServerCommand(String command) {
     this.command = command;
   }
 
@@ -200,7 +200,7 @@ public class server.Server {
       while (!Objects.isNull(nextLine = input.readLine())) {
         logger.info("Incoming request: " + nextLine);
         try {
-          server.Command command = parseCommand(nextLine.trim().toUpperCase());
+          server.ServerCommand command = parseCommand(nextLine.trim().toUpperCase());
           if (command == null) {
             output.println("{\"error\": \"Incorrect command, try again\"}");
           } else {
@@ -218,16 +218,16 @@ public class server.Server {
     }
   }
 
-  private server.Command parseCommand(String commandStr) {
+  private server.ServerCommand parseCommand(String commandStr) {
     try {
-      return server.Command.valueOf(commandStr);
+      return server.ServerCommand.valueOf(commandStr);
     } catch (IllegalArgumentException e) {
       logger.error("Invalid command: " + commandStr);
       return null;
     }
   }
 
-  public String handleRequest(server.Command request) throws JsonProcessingException {
+  public String handleRequest(server.ServerCommand request) throws JsonProcessingException {
     return switch (request) {
       case UPTIME -> response.calculateServerTime(creationTime);
       case HELP -> response.getCommands(storage.getCommands());
