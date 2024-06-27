@@ -1,4 +1,4 @@
-name: Generate Full CR Text
+name: Generate Full CR
 
 on:
   push:
