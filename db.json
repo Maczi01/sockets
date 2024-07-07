@@ -20,5 +20,11 @@
       "receiver" : "user",
       "createdDate" : 1719472947218
     } ]
+  },
+  "mati" : {
+    "username" : "mati",
+    "password" : "$2a$10$i60KWR9ezBTs5BOvFvoGdOZhDJvszn0ZFbx4ATPkR9i1ZO4Nblufm",
+    "role" : "ADMIN",
+    "messages" : [ ]
   }
 }

@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.mindrot.jbcrypt.BCrypt;
 
 public class UserService {
 
@@ -38,6 +39,8 @@ public class UserService {
     try {
       User user = objectMapper.readValue(userJson, User.class);
       Map<String, User> users = database.load();
+      String hashedPassword = BCrypt.hashpw(user.getPassword(), BCrypt.gensalt());
+      user.setPassword(hashedPassword);
       users.put(user.getUsername(), user);
       database.save(users);
       return "{\"message\": \"User added successfully\"}";
@@ -70,7 +73,7 @@ public class UserService {
       if (user1 == null) {
         return "{\"error\": \"User not found\"}";
       } else {
-        if (user1.getPassword().equals(user.getPassword())) {
+        if (BCrypt.checkpw(user.getPassword(), user1.getPassword())) {
           String roleResponse = String.format(
               "{\"message\": \"User logged in successfully\", \"role\": \"%s\"}", user1.getRole());
           return roleResponse;
@@ -81,5 +84,9 @@ public class UserService {
     } catch (JsonProcessingException e) {
       return "{\"error\": \"Unable to process login request\"}";
     }
+  }
+
+  public String decodePassword(String password) {
+    return BCrypt.hashpw(password, BCrypt.gensalt());
   }
 }

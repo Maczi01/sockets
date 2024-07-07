@@ -7,12 +7,16 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import user.User;
+import user.UserService;
 
 public class Database {
 
   private final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private final String FILE_PATH = "./db.json";
+  private static final Logger logger = LogManager.getLogger(Database.class);
 
   public Map<String, User> load() throws IOException {
     File file = new File(FILE_PATH);
@@ -31,7 +35,7 @@ public class Database {
       OBJECT_MAPPER.writerFor(new TypeReference<Map<String, User>>() {
       }).writeValue(file, users);
     } catch (IOException e) {
-      e.printStackTrace();
+      logger.error("Unable to save user: " + e.getMessage());
     }
   }
 }

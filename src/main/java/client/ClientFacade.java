@@ -2,6 +2,8 @@ package client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import config.Config;
+import config.ConfigReader;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -18,15 +20,16 @@ class ClientFacade {
   private static final Logger logger = LogManager.getLogger(ClientFacade.class);
   private static final Scanner scanner = new Scanner(System.in);
   private static final ObjectMapper mapper = new ObjectMapper();
-  private static final String CLIENT_IP = "127.0.0.1";
-  private static final int PORT = 5000;
   private static final UserSession session = new UserSession();
   private Socket clientSocket;
   private PrintWriter out;
   private BufferedReader in;
 
   void startConnection() throws IOException {
-    clientSocket = new Socket(CLIENT_IP, PORT);
+    Config config = ConfigReader.loadConfig();
+    int port = config.getPort();
+    String clientIp = config.getClientIp();
+    clientSocket = new Socket(clientIp, port);
     out = new PrintWriter(clientSocket.getOutputStream(), true);
     in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
     logger.info("Client successfully connected");
@@ -42,23 +45,11 @@ class ClientFacade {
   void handleUserInput() throws IOException {
     String input;
     while (!clientSocket.isClosed()) {
-      displayMenu();
+      displayMainMenu();
       input = scanner.nextLine();
       try {
-        int commandNumber = Integer.parseInt(input.trim());
-        switch (commandNumber) {
-          case 1 -> manageUsers();
-          case 2 -> loginToApplication();
-          case 3 -> readMessages();
-          case 4 -> sendMessage();
-          case 5 -> logout();
-          case 9 -> manageApplicationInfo();
-          case 0 -> {
-            logger.info("Exiting application");
-            stopConnection();
-            return;
-          }
-          default -> logger.info("Unknown request. Please enter a valid option.");
+        if (processUserCommand(input)) {
+          return;
         }
       } catch (NumberFormatException e) {
         logger.error("Invalid input: " + input);
@@ -67,32 +58,34 @@ class ClientFacade {
     }
   }
 
-  private void displayMenu() {
+  private boolean processUserCommand(String input) throws IOException {
+    int commandNumber = Integer.parseInt(input.trim());
+    switch (commandNumber) {
+      case 1 -> manageUsers();
+      case 2 -> loginToApplication();
+      case 3 -> readMessages();
+      case 4 -> sendMessage();
+      case 5 -> logout();
+      case 9 -> manageApplicationInfo();
+      case 0 -> {
+        logger.info("Exiting application");
+        stopConnection();
+        return true;
+      }
+      default -> logger.info("Unknown request. Please enter a valid option.");
+    }
+    return false;
+  }
+
+  private void displayMainMenu() {
     if (session.isLoggedIn()) {
       if (session.getRole() == Role.ADMIN) {
-        logger.info("Type one of the options: "
-            + "\n (1) - manage users"
-            + "\n (2) - login to application"
-            + "\n (3) - read messages"
-            + "\n (4) - send message"
-            + "\n (5) - logout"
-            + "\n (0) - exit"
-            + "\n");
+        displayAdminMenu();
       } else {
-        logger.info("Type one of the options: "
-            + "\n (3) - read messages"
-            + "\n (4) - send message"
-            + "\n (5) - logout"
-            + "\n (0) - exit"
-            + "\n");
+        displayUserMenu();
       }
     } else {
-      logger.info("Type one of the options: "
-          + "\n (1) - manage users"
-          + "\n (2) - login to application"
-          + "\n (9) - application info"
-          + "\n (0) - exit"
-          + "\n");
+      displayGuestMenu();
     }
   }
 
@@ -151,12 +144,7 @@ class ClientFacade {
     if (session.isLoggedIn() && session.getRole() == Role.ADMIN) {
       String userInput = "";
       while (!"0".equals(userInput)) {
-        logger.info("Manage Users Menu: "
-            + "\n (1) - Show user list"
-            + "\n (2) - Add user"
-            + "\n (3) - Remove user"
-            + "\n (0) - Return to main menu"
-            + "\n");
+        displayManageUsersMenu();
         userInput = scanner.nextLine();
         try {
           int userCommand = Integer.parseInt(userInput.trim());
@@ -208,12 +196,7 @@ class ClientFacade {
   }
 
   private void manageApplicationInfo() {
-    logger.info("Application Info Menu: "
-        + "\n (1) - Show server uptime"
-        + "\n (2) - Show server information"
-        + "\n (3) - Show list of available commands"
-        + "\n (0) - Return to main menu"
-        + "\n");
+    displayApplicationInfoMenu();
     String userInput = scanner.nextLine();
     try {
       int userCommand = Integer.parseInt(userInput.trim());
@@ -259,5 +242,53 @@ class ClientFacade {
     } else {
       logger.info("You are not logged in");
     }
+  }
+
+  private void displayApplicationInfoMenu() {
+    logger.info("Application Info Menu: "
+        + "\n (1) - Show server uptime"
+        + "\n (2) - Show server information"
+        + "\n (3) - Show list of available commands"
+        + "\n (0) - Return to main menu"
+        + "\n");
+  }
+
+  private void displayManageUsersMenu() {
+    logger.info("Manage Users Menu: "
+        + "\n (1) - Show user list"
+        + "\n (2) - Add user"
+        + "\n (3) - Remove user"
+        + "\n (0) - Return to main menu"
+        + "\n");
+  }
+
+
+  private void displayAdminMenu() {
+    logger.info("Type one of the options: "
+        + "\n (1) - manage users"
+        + "\n (2) - login to application"
+        + "\n (3) - read messages"
+        + "\n (4) - send message"
+        + "\n (5) - logout"
+        + "\n (0) - exit"
+        + "\n");
+  }
+
+  private void displayUserMenu() {
+    logger.info("Type one of the options: "
+        + "\n (3) - read messages"
+        + "\n (4) - send message"
+        + "\n (5) - logout"
+        + "\n (0) - exit"
+        + "\n");
+  }
+
+  private void displayGuestMenu() {
+    logger.info("Type one of the options: "
+        + "\n (1) - manage users"
+        + "\n (2) - login to application"
+        + "\n (9) - application info"
+        + "\n (0) - exit"
+        + "\n");
   }
 }
