@@ -157,7 +157,9 @@ class UserServiceTest {
     String result = userService.getUsers();
 
     // then
-    assertEquals("{\"Declan\":{\"username\":\"Declan\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"Mike\":{\"username\":\"Mike\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"john\":{\"username\":\"john\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"Calum\":{\"username\":\"Calum\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}", result);
+    assertEquals(
+        "{\"Declan\":{\"username\":\"Declan\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"Mike\":{\"username\":\"Mike\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"john\":{\"username\":\"john\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"Calum\":{\"username\":\"Calum\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}",
+        result);
   }
 
   @Test
@@ -175,8 +177,12 @@ class UserServiceTest {
     String resultAfterRemove = userService.getUsers();
 
     // then
-    assertEquals("{\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"john\":{\"username\":\"john\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}", resultBeforeRemove);
-    assertEquals("{\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}", resultAfterRemove);
+    assertEquals(
+        "{\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"john\":{\"username\":\"john\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}",
+        resultBeforeRemove);
+    assertEquals(
+        "{\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}",
+        resultAfterRemove);
     assertEquals("{\"message\": \"User removed successfully\"}", confirmRemove);
   }
 

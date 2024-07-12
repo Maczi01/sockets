@@ -1,1 +1,19 @@
-{}
+{
+  "john" : {
+    "username" : "john",
+    "password" : "$2a$10$6ZKLNrKWVDxb3CU6m10WBO3gn0CTLK7mLyN.GukMaFL0n6VAXgdFK",
+    "role" : "USER",
+    "messages" : [ ]
+  },
+  "admin" : {
+    "username" : "admin",
+    "password" : "$2a$10$QtbfCJ967GFJtdsveqj9DeS08IFZhuTO5c.v2iPZ0eeQpAm8QBSp2",
+    "role" : "ADMIN",
+    "messages" : [ {
+      "content" : "Hello admin",
+      "sender" : "john",
+      "receiver" : "admin",
+      "createdDate" : 1720791483361
+    } ]
+  }
+}
