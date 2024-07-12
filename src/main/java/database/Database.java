@@ -10,7 +10,6 @@ import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import user.User;
-import user.UserService;
 
 public class Database {
 
@@ -36,6 +35,16 @@ public class Database {
       }).writeValue(file, users);
     } catch (IOException e) {
       logger.error("Unable to save user: " + e.getMessage());
+    }
+  }
+
+  public void clear() {
+    File file = new File(FILE_PATH);
+    try {
+      OBJECT_MAPPER.writerFor(new TypeReference<Map<String, User>>() {
+      }).writeValue(file, new HashMap<>());
+    } catch (IOException e) {
+      logger.error("Unable to clear database: " + e.getMessage());
     }
   }
 }

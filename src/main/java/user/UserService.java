@@ -15,6 +15,7 @@ public class UserService {
   private final ObjectMapper objectMapper = new ObjectMapper();
   private static final Logger logger = LogManager.getLogger(UserService.class);
   private final Database database = new Database();
+  private final int MIN_PASSWORD_LENGTH = 4;
 
   public User getUser(String username) throws IOException {
     return database.load().get(username);
@@ -39,7 +40,13 @@ public class UserService {
     try {
       User user = objectMapper.readValue(userJson, User.class);
       Map<String, User> users = database.load();
+      if(user.getPassword().length() < MIN_PASSWORD_LENGTH) {
+        return "{\"error\": \"Password length must be at least 4 characters\"}";
+      }
       String hashedPassword = BCrypt.hashpw(user.getPassword(), BCrypt.gensalt());
+      if (users.containsKey(user.getUsername())) {
+        return "{\"error\": \"User already exists\"}";
+      }
       user.setPassword(hashedPassword);
       users.put(user.getUsername(), user);
       database.save(users);
