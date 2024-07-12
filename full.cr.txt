@@ -418,7 +418,6 @@ import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import user.User;
-import user.UserService;
 
 public class Database {
 
@@ -444,6 +443,16 @@ public class Database {
       }).writeValue(file, users);
     } catch (IOException e) {
       logger.error("Unable to save user: " + e.getMessage());
+    }
+  }
+
+  public void clear() {
+    File file = new File(FILE_PATH);
+    try {
+      OBJECT_MAPPER.writerFor(new TypeReference<Map<String, User>>() {
+      }).writeValue(file, new HashMap<>());
+    } catch (IOException e) {
+      logger.error("Unable to clear database: " + e.getMessage());
     }
   }
 }
@@ -727,7 +736,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
-import message.MessageServiceTest;
+import message.MessageService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import user.UserService;
@@ -904,6 +913,7 @@ public class UserService {
   private final ObjectMapper objectMapper = new ObjectMapper();
   private static final Logger logger = LogManager.getLogger(UserService.class);
   private final Database database = new Database();
+  private final int MIN_PASSWORD_LENGTH = 4;
 
   public User getUser(String username) throws IOException {
     return database.load().get(username);
@@ -928,7 +938,13 @@ public class UserService {
     try {
       User user = objectMapper.readValue(userJson, User.class);
       Map<String, User> users = database.load();
+      if(user.getPassword().length() < MIN_PASSWORD_LENGTH) {
+        return "{\"error\": \"Password length must be at least 4 characters\"}";
+      }
       String hashedPassword = BCrypt.hashpw(user.getPassword(), BCrypt.gensalt());
+      if (users.containsKey(user.getUsername())) {
+        return "{\"error\": \"User already exists\"}";
+      }
       user.setPassword(hashedPassword);
       users.put(user.getUsername(), user);
       database.save(users);
@@ -1020,4 +1036,357 @@ public class UserSession {
     return role;
   }
 }
+
+====================
+FILE: src/test/java/message/MessageServiceTest.java
+
+package message;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import database.Database;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import user.UserService;
+
+class MessageServiceTest {
+
+  private UserService userService;
+  private MessageService messageService;
+  private Database database;
+  private ObjectMapper objectMapper;
+
+
+  @BeforeEach
+  void setUp() {
+    userService = new UserService();
+    database = new Database();
+    messageService = new MessageService();
+    objectMapper = new ObjectMapper();
+    database.clear();
+  }
+
+  @Test
+  @DisplayName("Should correctly send message from user to admin")
+  void shouldSendMessageFromUserToAdmin() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
+    userService.addUser(userJson);
+    userService.addUser(adminJson);
+    String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin\"}";
+
+    // when
+    String result = messageService.sendMessage(messageJson);
+
+    // then
+    assertEquals("{\"message\": \"Message sent\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should correctly send message from user to admin and read it")
+  void shouldSendMessageFromUserToAdminAndReadIt() throws Exception {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
+    userService.addUser(userJson);
+    userService.addUser(adminJson);
+    String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin\"}";
+    messageService.sendMessage(messageJson);
+
+    // when
+    String result = messageService.readMessages("{\"username\":\"admin\"}");
+
+    JsonNode resultNode = objectMapper.readTree(result);
+    long createdDate = resultNode.get(0).get("createdDate").asLong();
+
+    // then
+    String expectedMessage = String.format(
+        "[{\"content\":\"Hello admin\",\"sender\":\"john\",\"receiver\":\"admin\",\"createdDate\":%d}]",
+        createdDate
+    );
+    assertEquals(expectedMessage, result);
+  }
+
+  @Test
+  @DisplayName("Should not send message from user to unknown user")
+  void shouldNotSendMessageFromUserToUnknownUser() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+    userService.addUser(userJson);
+    String messageJson = "{\"sender\":\"john\",\"receiver\":\"gall\",\"content\":\"Hello gall\"}";
+
+    // when
+    String result = messageService.sendMessage(messageJson);
+
+    // then
+    assertEquals("{\"error\": \"Receiver not found\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not send message if text too long")
+  void shouldNotSendMessageIfTextTooLong() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
+    userService.addUser(userJson);
+    userService.addUser(adminJson);
+    String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin, I hope you are doing well. I am writing to you to ask for a favor. I need you to help me with a project that I am working on. I need you to provide me with some information that I am missing. I hope you can help me with this. Thank you very much for your help. I really appreciate it.\"}";
+
+    // when
+    String result = messageService.sendMessage(messageJson);
+
+    // then
+    assertEquals("{\"error\": \"Message is too long\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not send message if mailbox is full")
+  void shouldNotSendMessageIfMailboxIsFull() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
+    userService.addUser(userJson);
+    userService.addUser(adminJson);
+    String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin\"}";
+    int MAILBOX_CAPACITY = 5;
+    for (int i = 0; i < MAILBOX_CAPACITY; i++) {
+      messageService.sendMessage(messageJson);
+    }
+
+    // when
+    String result = messageService.sendMessage(messageJson);
+
+    // then
+    assertEquals("{\"error\": \"Receiver mailbox is full, cannot send message\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not send message if sender not found")
+  void shouldNotSendMessageIfSenderNotFound() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+    userService.addUser(userJson);
+    String messageJson = "{\"sender\":\"gall\",\"receiver\":\"mike\",\"content\":\"Hello john\"}";
+
+    // when
+    String result = messageService.sendMessage(messageJson);
+
+    // then
+    assertEquals("{\"error\": \"Receiver not found\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should return message about empty mailbox if mailbox is empty")
+  void shouldReturnMessageAboutEmptyMailboxIfMailboxIsEmpty() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+    userService.addUser(userJson);
+
+    // when
+    String result = messageService.readMessages("{\"username\":\"john\"}");
+
+    // then
+    assertEquals("{\"message\": \"Mailbox is empty\"}", result);
+  }
+}
+
+====================
+FILE: src/test/java/user/UserServiceTest.java
+
+package user;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import database.Database;
+import java.io.IOException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+class UserServiceTest {
+
+  private UserService userService;
+  private Database database;
+
+  @BeforeEach
+  void setUp() {
+    userService = new UserService();
+    database = new Database();
+    database.clear();
+  }
+
+  @Test
+  @DisplayName("Should correctly add user with role user to database and return success message")
+  void shouldAddUserWithRoleUserToDatabase() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
+
+    // when
+    String result = userService.addUser(userJson);
+
+    // then
+    assertEquals("{\"message\": \"User added successfully\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should correctly add user with role user to database and return success message")
+  void shouldAddUserWithRoleAdminToDatabase() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+
+    // when
+    String result = userService.addUser(userJson);
+
+    // then
+    assertEquals("{\"message\": \"User added successfully\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not correctly add user with unknown role to database and return error message")
+  void shouldNotAddUserWithUnknownRoleToDatabase() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"DRIVER\"}";
+
+    // when
+    String result = userService.addUser(userJson);
+
+    // then
+    assertEquals("{\"error\": \"Unable to add user\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not correctly add user if password is too short and return error message")
+  void shouldNotAddUserToDatabaseIfPasswordTooShort() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"p\",\"role\":\"USER\"}";
+
+    // when
+    String result = userService.addUser(userJson);
+
+    // then
+    assertEquals("{\"error\": \"Password length must be at least 4 characters\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not correctly add user with unknown format to database and return error message")
+  void shouldNotAddUserWithUnknownFormatToDatabase() {
+    // given
+    String userJson = "{\"name\":\"john\",\"pw\":\"pass\",\"role\":\"ADMIN\"}";
+
+    // when
+    String result = userService.addUser(userJson);
+
+    // then
+    assertEquals("{\"error\": \"Unable to add user\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should correctly log in user with correct credentials and return success message")
+  void shouldSuccessfullyLoginToAppWithCorrectCredentials() throws IOException {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+
+    // when
+    userService.addUser(userJson);
+    String result = userService.loginUser("{\"username\":\"john\",\"password\":\"pass\"}");
+
+    // then
+    assertEquals("{\"message\": \"User logged in successfully\", \"role\": \"ADMIN\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not log in user with incorrect credentials and return error message")
+  void shouldUnsuccessfullyLoginToAppWithIncorrectCredentials() throws IOException {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+
+    // when
+    userService.addUser(userJson);
+    String result = userService.loginUser("{\"username\":\"john\",\"password\":\"wrong\"}");
+
+    // then
+    assertEquals("{\"error\": \"Invalid credentials\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should not add two users with the same names and return error message")
+  void shouldNotAddTwoUsersWithSameNames() {
+    // given
+    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+
+    // when
+    userService.addUser(userJson);
+    String resultOfRepeatedUser = userService.addUser(userJson);
+
+    // then
+    assertEquals("{\"error\": \"User already exists\"}", resultOfRepeatedUser);
+  }
+
+  @Test
+  @DisplayName("Should return empty list")
+  void shouldCorrectlyReturnEmptyList() throws IOException {
+    // given
+    // when
+    String result = userService.getUsers();
+
+    // then
+    assertEquals("{\"message\": \"No users in the list\"}", result);
+  }
+
+  @Test
+  @DisplayName("Should return list with five users")
+  void shouldCorrectlyReturnListWithFiveUsers() throws IOException {
+    // given
+    String userJsonOne = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+    String userJsonTwo = "{\"username\":\"colin\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+    String userJsonThree = "{\"username\":\"Calum\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+    String userJsonFour = "{\"username\":\"Declan\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+    String userJsonFive = "{\"username\":\"Mike\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+
+    // when
+    userService.addUser(userJsonOne);
+    userService.addUser(userJsonTwo);
+    userService.addUser(userJsonThree);
+    userService.addUser(userJsonFour);
+    userService.addUser(userJsonFive);
+    String result = userService.getUsers();
+
+    // then
+    assertEquals(
+        "{\"Declan\":{\"username\":\"Declan\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"Mike\":{\"username\":\"Mike\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"john\":{\"username\":\"john\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"Calum\":{\"username\":\"Calum\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}",
+        result);
+  }
+
+  @Test
+  @DisplayName("Should correctly return list with one user after delete")
+  void shouldCorrectlyRemoveUser() throws IOException {
+    // given
+    String userJsonOne = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+    String userJsonTwo = "{\"username\":\"colin\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+
+    // when
+    userService.addUser(userJsonOne);
+    userService.addUser(userJsonTwo);
+    String resultBeforeRemove = userService.getUsers();
+    String confirmRemove = userService.removeUser("john");
+    String resultAfterRemove = userService.getUsers();
+
+    // then
+    assertEquals(
+        "{\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null},\"john\":{\"username\":\"john\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}",
+        resultBeforeRemove);
+    assertEquals(
+        "{\"colin\":{\"username\":\"colin\",\"password\":null,\"role\":\"ADMIN\",\"messages\":null}}",
+        resultAfterRemove);
+    assertEquals("{\"message\": \"User removed successfully\"}", confirmRemove);
+  }
+
+
+}
+
+
 
