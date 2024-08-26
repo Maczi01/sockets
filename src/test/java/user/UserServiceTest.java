@@ -17,17 +17,24 @@ class UserServiceTest {
   void setUp() {
     userService = new UserService();
     database = new Database();
+    clearDatabase();
+  }
+
+  private void clearDatabase() {
     database.clear();
+  }
+
+  private String addUser(String username, String password, String role) {
+    String userJson = String.format("{\"username\":\"%s\",\"password\":\"%s\",\"role\":\"%s\"}", username, password, role);
+    return userService.addUser(userJson);
   }
 
   @Test
   @DisplayName("Should correctly add user with role user to database and return success message")
   void shouldAddUserWithRoleUserToDatabase() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-
     // when
-    String result = userService.addUser(userJson);
+    String result = addUser("john", "pass", "USER");
 
     // then
     assertEquals("{\"message\": \"User added successfully\"}", result);
@@ -37,10 +44,8 @@ class UserServiceTest {
   @DisplayName("Should correctly add user with role user to database and return success message")
   void shouldAddUserWithRoleAdminToDatabase() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
-
     // when
-    String result = userService.addUser(userJson);
+    String result = addUser("john", "pass", "ADMIN");
 
     // then
     assertEquals("{\"message\": \"User added successfully\"}", result);
@@ -50,10 +55,8 @@ class UserServiceTest {
   @DisplayName("Should not correctly add user with unknown role to database and return error message")
   void shouldNotAddUserWithUnknownRoleToDatabase() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"DRIVER\"}";
-
     // when
-    String result = userService.addUser(userJson);
+    String result = addUser("john", "pass", "DRIVER");
 
     // then
     assertEquals("{\"error\": \"Unable to add user\"}", result);
@@ -63,10 +66,8 @@ class UserServiceTest {
   @DisplayName("Should not correctly add user if password is too short and return error message")
   void shouldNotAddUserToDatabaseIfPasswordTooShort() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"p\",\"role\":\"USER\"}";
-
     // when
-    String result = userService.addUser(userJson);
+    String result = addUser("john", "p", "DRIVER");
 
     // then
     assertEquals("{\"error\": \"Password length must be at least 4 characters\"}", result);
@@ -89,24 +90,22 @@ class UserServiceTest {
   @DisplayName("Should correctly log in user with correct credentials and return success message")
   void shouldSuccessfullyLoginToAppWithCorrectCredentials() throws IOException {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+    addUser("john", "pass", "ADMIN");
 
     // when
-    userService.addUser(userJson);
-    String result = userService.loginUser("{\"username\":\"john\",\"password\":\"pass\"}");
+    String loginResult = userService.loginUser("{\"username\":\"john\",\"password\":\"pass\"}");
 
     // then
-    assertEquals("{\"message\": \"User logged in successfully\", \"role\": \"ADMIN\"}", result);
+    assertEquals("{\"message\": \"User logged in successfully\", \"role\": \"ADMIN\"}", loginResult);
   }
 
   @Test
   @DisplayName("Should not log in user with incorrect credentials and return error message")
   void shouldUnsuccessfullyLoginToAppWithIncorrectCredentials() throws IOException {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
+    addUser("john", "pass", "USER");
 
     // when
-    userService.addUser(userJson);
     String result = userService.loginUser("{\"username\":\"john\",\"password\":\"wrong\"}");
 
     // then
@@ -117,11 +116,9 @@ class UserServiceTest {
   @DisplayName("Should not add two users with the same names and return error message")
   void shouldNotAddTwoUsersWithSameNames() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
-
     // when
-    userService.addUser(userJson);
-    String resultOfRepeatedUser = userService.addUser(userJson);
+    addUser("john", "pass", "USER");
+    String resultOfRepeatedUser = addUser("john", "pass", "USER");
 
     // then
     assertEquals("{\"error\": \"User already exists\"}", resultOfRepeatedUser);

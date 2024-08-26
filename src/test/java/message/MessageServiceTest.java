@@ -24,17 +24,25 @@ class MessageServiceTest {
     database = new Database();
     messageService = new MessageService();
     objectMapper = new ObjectMapper();
+    clearDatabase();
+  }
+
+  private void clearDatabase() {
     database.clear();
+  }
+
+  private String addUser(String username, String password, String role) {
+    String userJson = String.format("{\"username\":\"%s\",\"password\":\"%s\",\"role\":\"%s\"}", username, password, role);
+    return userService.addUser(userJson);
   }
 
   @Test
   @DisplayName("Should correctly send message from user to admin")
   void shouldSendMessageFromUserToAdmin() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
-    userService.addUser(userJson);
-    userService.addUser(adminJson);
+    addUser("john", "pass", "USER");
+    addUser("admin", "admin", "ADMIN");
+
     String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin\"}";
 
     // when
@@ -48,10 +56,9 @@ class MessageServiceTest {
   @DisplayName("Should correctly send message from user to admin and read it")
   void shouldSendMessageFromUserToAdminAndReadIt() throws Exception {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
-    userService.addUser(userJson);
-    userService.addUser(adminJson);
+    addUser("john", "pass", "USER");
+    addUser("admin", "admin", "ADMIN");
+
     String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin\"}";
     messageService.sendMessage(messageJson);
 
@@ -73,8 +80,7 @@ class MessageServiceTest {
   @DisplayName("Should not send message from user to unknown user")
   void shouldNotSendMessageFromUserToUnknownUser() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-    userService.addUser(userJson);
+    addUser("john", "pass", "USER");
     String messageJson = "{\"sender\":\"john\",\"receiver\":\"gall\",\"content\":\"Hello gall\"}";
 
     // when
@@ -88,10 +94,8 @@ class MessageServiceTest {
   @DisplayName("Should not send message if text too long")
   void shouldNotSendMessageIfTextTooLong() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
-    userService.addUser(userJson);
-    userService.addUser(adminJson);
+    addUser("john", "pass", "USER");
+    addUser("admin", "admin", "ADMIN");
     String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin, I hope you are doing well. I am writing to you to ask for a favor. I need you to help me with a project that I am working on. I need you to provide me with some information that I am missing. I hope you can help me with this. Thank you very much for your help. I really appreciate it.\"}";
 
     // when
@@ -105,10 +109,8 @@ class MessageServiceTest {
   @DisplayName("Should not send message if mailbox is full")
   void shouldNotSendMessageIfMailboxIsFull() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-    String adminJson = "{\"username\":\"admin\",\"password\":\"admin\",\"role\":\"ADMIN\"}";
-    userService.addUser(userJson);
-    userService.addUser(adminJson);
+    addUser("john", "pass", "USER");
+    addUser("admin", "admin", "ADMIN");
     String messageJson = "{\"sender\":\"john\",\"receiver\":\"admin\",\"content\":\"Hello admin\"}";
     int MAILBOX_CAPACITY = 5;
     for (int i = 0; i < MAILBOX_CAPACITY; i++) {
@@ -126,8 +128,7 @@ class MessageServiceTest {
   @DisplayName("Should not send message if sender not found")
   void shouldNotSendMessageIfSenderNotFound() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-    userService.addUser(userJson);
+    addUser("john", "pass", "USER");
     String messageJson = "{\"sender\":\"gall\",\"receiver\":\"mike\",\"content\":\"Hello john\"}";
 
     // when
@@ -141,8 +142,7 @@ class MessageServiceTest {
   @DisplayName("Should return message about empty mailbox if mailbox is empty")
   void shouldReturnMessageAboutEmptyMailboxIfMailboxIsEmpty() {
     // given
-    String userJson = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"USER\"}";
-    userService.addUser(userJson);
+    addUser("john", "pass", "USER");
 
     // when
     String result = messageService.readMessages("{\"username\":\"john\"}");
