@@ -1,10 +1,17 @@
 package message;
 
+import static db.Tables.MESSAGES;
+import static db.Tables.USERS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import database.Database;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Date;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,7 +35,10 @@ class MessageServiceTest {
   }
 
   private void clearDatabase() {
-    database.clear();
+    DSLContext create = database.getDSLContext();
+
+    create.deleteFrom(MESSAGES).execute(); // Delete all messages
+    create.deleteFrom(USERS).execute();
   }
 
   private String addUser(String username, String password, String role) {
@@ -66,15 +76,17 @@ class MessageServiceTest {
     String result = messageService.readMessages("{\"username\":\"admin\"}");
 
     JsonNode resultNode = objectMapper.readTree(result);
-    long createdDate = resultNode.get(0).get("createdDate").asLong();
+    String createdDate = resultNode.get(0).get("createdDate").asText();
 
     // then
     String expectedMessage = String.format(
-        "[{\"content\":\"Hello admin\",\"sender\":\"john\",\"receiver\":\"admin\",\"createdDate\":%d}]",
+        "[{\"content\":\"Hello admin\",\"sender\":\"john\",\"receiver\":\"admin\",\"createdDate\":\"%s\"}]",
         createdDate
     );
+
     assertEquals(expectedMessage, result);
   }
+
 
   @Test
   @DisplayName("Should not send message from user to unknown user")

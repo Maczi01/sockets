@@ -1,9 +1,12 @@
 package user;
 
+import static db.Tables.MESSAGES;
+import static db.Tables.USERS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import database.Database;
 import java.io.IOException;
+import org.jooq.DSLContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,7 +24,10 @@ class UserServiceTest {
   }
 
   private void clearDatabase() {
-    database.clear();
+    DSLContext create = database.getDSLContext();
+
+    create.deleteFrom(MESSAGES).execute();
+    create.deleteFrom(USERS).execute();
   }
 
   private String addUser(String username, String password, String role) {
@@ -67,7 +73,7 @@ class UserServiceTest {
   void shouldNotAddUserToDatabaseIfPasswordTooShort() {
     // given
     // when
-    String result = addUser("john", "p", "DRIVER");
+    String result = addUser("john", "p", "ADMIN");
 
     // then
     assertEquals("{\"error\": \"Password length must be at least 4 characters\"}", result);
@@ -88,7 +94,7 @@ class UserServiceTest {
 
   @Test
   @DisplayName("Should correctly log in user with correct credentials and return success message")
-  void shouldSuccessfullyLoginToAppWithCorrectCredentials() throws IOException {
+  void shouldSuccessfullyLoginToAppWithCorrectCredentials() {
     // given
     addUser("john", "pass", "ADMIN");
 
@@ -101,7 +107,7 @@ class UserServiceTest {
 
   @Test
   @DisplayName("Should not log in user with incorrect credentials and return error message")
-  void shouldUnsuccessfullyLoginToAppWithIncorrectCredentials() throws IOException {
+  void shouldUnsuccessfullyLoginToAppWithIncorrectCredentials() {
     // given
     addUser("john", "pass", "USER");
 
@@ -126,7 +132,7 @@ class UserServiceTest {
 
   @Test
   @DisplayName("Should return empty list")
-  void shouldCorrectlyReturnEmptyList() throws IOException {
+  void shouldCorrectlyReturnEmptyList() {
     // given
     // when
     String result = userService.getUsers();
@@ -137,7 +143,7 @@ class UserServiceTest {
 
   @Test
   @DisplayName("Should return list with five users")
-  void shouldCorrectlyReturnListWithFiveUsers() throws IOException {
+  void shouldCorrectlyReturnListWithFiveUsers() {
     // given
     String userJsonOne = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
     String userJsonTwo = "{\"username\":\"colin\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
@@ -161,7 +167,7 @@ class UserServiceTest {
 
   @Test
   @DisplayName("Should correctly return list with one user after delete")
-  void shouldCorrectlyRemoveUser() throws IOException {
+  void shouldCorrectlyRemoveUser() {
     // given
     String userJsonOne = "{\"username\":\"john\",\"password\":\"pass\",\"role\":\"ADMIN\"}";
     String userJsonTwo = "{\"username\":\"colin\",\"password\":\"pass\",\"role\":\"ADMIN\"}";

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+
+<configuration xmlns="http://www.jooq.org/xsd/jooq-codegen-3.16.0.xsd">
+
+    <jdbc>
+        <driver>com.mysql.cj.jdbc.Driver</driver>
+        <url>jdbc:mysql://localhost:3306/cs</url> <!-- Make sure the URL and port are correct for MySQL -->
+        <user>root</user>
+        <password></password> <!-- If your MySQL has a password, include it here -->
+    </jdbc>
+
+    <generator>
+        <name>org.jooq.codegen.JavaGenerator</name>
+
+        <database>
+            <!-- Use MySQLDatabase for MySQL -->
+            <name>org.jooq.meta.mysql.MySQLDatabase</name>
+            <inputSchema>cs</inputSchema> <!-- Specify the schema you're working with -->
+            <includes>.*</includes>
+            <excludes></excludes>
+            <dateAsTimestamp>true</dateAsTimestamp>
+        </database>
+
+        <target>
+            <packageName>db</packageName>
+            <directory>C:/Users/mateu/IdeaProjects/sockety/src/main/java</directory> <!-- Ensure this directory exists -->
+        </target>
+    </generator>
+
+</configuration>

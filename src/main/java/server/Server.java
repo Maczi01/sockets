@@ -1,6 +1,7 @@
 package server;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -12,6 +13,8 @@ import java.time.Instant;
 import java.util.Objects;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import user.Role;
+import user.User;
 import user.UserService;
 
 public class Server {
@@ -20,6 +23,7 @@ public class Server {
   private final ServerSocket server;
   private static final int PORT = 5000;
   private final ServerFacade serverFacade;
+  private final UserService userService;
 
   public Server() {
     try {
@@ -28,11 +32,35 @@ public class Server {
       logger.error("Error creating server: " + e.getMessage());
       throw new RuntimeException(e);
     }
-    Storage storage = new Storage();
-    UserService userService = new UserService();
+    userService = new UserService();
     Instant creationTime = Instant.now();
-    serverFacade = new ServerFacade(storage, userService, creationTime);
+    serverFacade = new ServerFacade(new Storage(), userService, creationTime);
+
+    // Add two user records to the database
+    initializeUsers();
+
     logger.info("Server successfully started on port " + PORT);
+  }
+
+  // Method to initialize users in the database
+  private void initializeUsers() {
+    try {
+      User user1 = new User("john", "password", Role.USER);
+      User user2 = new User("admin", "admin", Role.ADMIN);
+
+      // Convert to JSON and add users using UserService
+      userService.addUser(userToJson(user1));
+      userService.addUser(userToJson(user2));
+
+      logger.info("Added default users to the database.");
+    } catch (Exception e) {
+      logger.error("Error initializing default users: " + e.getMessage(), e);
+    }
+  }
+
+  // Helper method to convert a User object to JSON format
+  private String userToJson(User user) throws JsonProcessingException {
+    return new ObjectMapper().writeValueAsString(user);
   }
 
   public static void main(String[] args) {

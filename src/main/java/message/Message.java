@@ -1,24 +1,26 @@
 package message;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.time.Instant;
-import java.util.Date;
 
 public class Message {
 
   private String content;
   private String sender;
   private String receiver;
-  private Date createdDate;
+  private String createdDate;
 
   public Message(
       @JsonProperty("content") String content,
       @JsonProperty("sender") String sender,
-      @JsonProperty("receiver") String receiver) {
+      @JsonProperty("receiver") String receiver,
+      @JsonProperty("createdDate") String date) {
     this.content = content;
     this.sender = sender;
     this.receiver = receiver;
-    this.createdDate = Date.from(Instant.now());
+    this.createdDate = date;
+  }
+
+  public Message() {
   }
 
   public String getContent() {
@@ -45,11 +47,11 @@ public class Message {
     this.receiver = receiver;
   }
 
-  public Date getCreatedDate() {
+  public String getCreatedDate() {
     return createdDate;
   }
 
-  public void setCreatedDate(Date createdDate) {
+  public void setCreatedDate(String createdDate) {
     this.createdDate = createdDate;
   }
 }
