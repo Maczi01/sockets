@@ -1648,6 +1648,7 @@ import database.Database;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import user.User;
 
 public class MessageService {
@@ -1663,43 +1664,45 @@ public class MessageService {
     try {
       Message message = objectMapper.readValue(payload, Message.class);
 
-      Integer receiverId = create.select(USERS.ID)
-          .from(USERS)
-          .where(USERS.USERNAME.eq(message.getReceiver()))
-          .fetchOne(USERS.ID);
+      return create.transactionResult(configuration -> {
+        DSLContext ctx = DSL.using(configuration);
 
-      if (receiverId == null) {
-        return "{\"error\": \"Receiver not found\"}";
-      }
+        Integer receiverId = ctx.select(USERS.ID)
+            .from(USERS)
+            .where(USERS.USERNAME.eq(message.getReceiver()))
+            .fetchOne(USERS.ID);
 
-      Integer senderId = create.select(USERS.ID)
-          .from(USERS)
-          .where(USERS.USERNAME.eq(message.getSender()))
-          .fetchOne(USERS.ID);
+        if (receiverId == null) {
+          return "{\"error\": \"Receiver not found\"}";
+        }
 
-      if (message.getContent().length() >= MESSAGE_SIZE) {
-        return "{\"error\": \"Message is too long\"}";
-      }
+        Integer senderId = ctx.select(USERS.ID)
+            .from(USERS)
+            .where(USERS.USERNAME.eq(message.getSender()))
+            .fetchOne(USERS.ID);
 
-//      get number of messages in inbox
-      long numberOfMessages = create.select(MESSAGES.ID)
-          .from(MESSAGES)
-          .where(MESSAGES.RECEIVER_ID.eq(receiverId))
-          .stream()
-          .count();
+        if (message.getContent().length() >= MESSAGE_SIZE) {
+          return "{\"error\": \"Message is too long\"}";
+        }
 
-      if (numberOfMessages >= MAILBOX_SIZE) {
-        return "{\"error\": \"Receiver mailbox is full, cannot send message\"}";
-      }
+        long numberOfMessages = ctx.select(MESSAGES.ID)
+            .from(MESSAGES)
+            .where(MESSAGES.RECEIVER_ID.eq(receiverId))
+            .stream()
+            .count();
 
+        if (numberOfMessages >= MAILBOX_SIZE) {
+          return "{\"error\": \"Receiver mailbox is full, cannot send message\"}";
+        }
 
-      create.insertInto(MESSAGES)
-          .set(MESSAGES.CONTENT, message.getContent())
-          .set(MESSAGES.SENDER_ID, senderId)
-          .set(MESSAGES.RECEIVER_ID, receiverId)
-          .execute();
+        ctx.insertInto(MESSAGES)
+            .set(MESSAGES.CONTENT, message.getContent())
+            .set(MESSAGES.SENDER_ID, senderId)
+            .set(MESSAGES.RECEIVER_ID, receiverId)
+            .execute();
 
-      return "{\"message\": \"Message sent\"}";
+        return "{\"message\": \"Message sent\"}";
+      });
 
     } catch (JsonProcessingException e) {
       e.printStackTrace();
@@ -2152,6 +2155,7 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.mindrot.jbcrypt.BCrypt;
 
 public class UserService {
@@ -2201,19 +2205,25 @@ public class UserService {
 
       String hashedPassword = BCrypt.hashpw(user.getPassword(), BCrypt.gensalt());
 
-      if (create.fetchExists(
-          selectFrom(USERS).where(USERS.USERNAME.eq(user.getUsername()))
-      )) {
-        return "{\"error\": \"User already exists\"}";
-      }
+      return create.transactionResult(configuration -> {
+        DSLContext ctx = DSL.using(configuration);
 
-      create.insertInto(USERS)
-          .set(USERS.USERNAME, user.getUsername())
-          .set(USERS.PASSWORD, hashedPassword)
-          .set(USERS.ROLE, toUsersRole(user.getRole())) // Convert Role to jOOQ UsersRole
-          .execute();
+        if (ctx.fetchExists(
+            ctx.selectFrom(USERS).where(USERS.USERNAME.eq(user.getUsername()))
+        )) {
+          return "{\"error\": \"User already exists\"}";
+        }
 
-      return "{\"message\": \"User added successfully\"}";
+        // Insert the new user
+        ctx.insertInto(USERS)
+            .set(USERS.USERNAME, user.getUsername())
+            .set(USERS.PASSWORD, hashedPassword)
+            .set(USERS.ROLE, toUsersRole(user.getRole())) // Convert Role to jOOQ UsersRole
+            .execute();
+
+        return "{\"message\": \"User added successfully\"}";
+      });
+
     } catch (JsonProcessingException e) {
       return "{\"error\": \"Unable to add user\"}";
     }
