@@ -8,6 +8,7 @@ import static user.RoleMapper.toUsersRole;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import database.Database;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -27,25 +28,20 @@ public class UserService {
   public User getUser(String username) {
     return create.selectFrom(USERS)
         .where(USERS.USERNAME.eq(username))
-        .fetchOne(record -> new User(
-            record.getValue(USERS.USERNAME),
-            toRole(record.getValue(USERS.ROLE))
-        ));
+        .fetchOneInto(User.class);
   }
 
   public String getUsers() {
-    Map<String, User> users = create.selectFrom(USERS)
-        .fetchStream()
-        .collect(Collectors.toMap(
-            record -> record.getValue(USERS.USERNAME),
-            record -> new User(
-                record.getValue(USERS.USERNAME),
-                toRole(record.getValue(USERS.ROLE))
-            )
-        ));
-    if (users.isEmpty()) {
+    List<User> userList = create.selectFrom(USERS)
+        .fetchInto(User.class);
+
+    if (userList.isEmpty()) {
       return "{\"message\": \"No users in the list\"}";
     }
+
+    Map<String, User> users = userList.stream()
+        .collect(Collectors.toMap(User::getUsername, user -> user));
+
     try {
       return objectMapper.writeValueAsString(users);
     } catch (JsonProcessingException e) {
