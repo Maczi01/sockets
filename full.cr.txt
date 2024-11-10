@@ -55,6 +55,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import config.Config;
 import config.ConfigReader;
+import exceptions.InvalidInputException;
+import exceptions.ServerException;
+import exceptions.UserNotFoundException;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -142,8 +145,7 @@ class ClientFacade {
 
   private void loginToApplication() {
     if (session.isLoggedIn()) {
-      logger.info("You are already logged in");
-      return;
+      throw new InvalidInputException("You are already logged in");
     }
     logger.info("Login to application");
     logger.info("Enter username: ");
@@ -152,6 +154,7 @@ class ClientFacade {
     String password = scanner.nextLine();
     String userDetails = String.format("{\"username\":\"%s\", \"password\":\"%s\"}", username, password);
     String response = messageServer("LOGIN " + userDetails);
+
     if (response.contains("successfully")) {
       try {
         JsonNode rootNode = mapper.readTree(response);
@@ -160,10 +163,10 @@ class ClientFacade {
         session.login(username, role);
         logger.info("Login successful. Welcome, " + username + "!");
       } catch (IOException e) {
-        logger.error("Error processing login response: " + e.getMessage());
+        throw new ServerException("Error processing login response", e);
       }
     } else {
-      logger.error("Login failed: " + response);
+      throw new UserNotFoundException("Login failed: User not found");
     }
   }
 
@@ -1573,6 +1576,38 @@ public class UsersRecord extends UpdatableRecordImpl<UsersRecord> implements Rec
 }
 
 ====================
+FILE: src/main/java/exceptions/InvalidInputException.java
+
+package exceptions;
+
+public class InvalidInputException extends RuntimeException {
+  public InvalidInputException(String message) {
+    super(message);
+  }
+}
+
+====================
+FILE: src/main/java/exceptions/ServerException.java
+
+package exceptions;
+
+public class ServerException extends RuntimeException {
+  public ServerException(String message, Throwable cause) {
+    super(message, cause);
+  }
+}
+
+====================
+FILE: src/main/java/exceptions/UserNotFoundException.java
+
+package exceptions;
+
+public class UserNotFoundException extends RuntimeException {
+  public UserNotFoundException(String message) {
+    super(message);
+  }
+}
+====================
 FILE: src/main/java/message/Message.java
 
 package message;
@@ -1803,6 +1838,8 @@ package server;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import exceptions.InvalidInputException;
+import exceptions.UserNotFoundException;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -1881,7 +1918,7 @@ public class Server {
     ) {
       logger.info("Client connected");
       String nextLine;
-      while (!Objects.isNull(nextLine = input.readLine())) {
+      while ((nextLine = input.readLine()) != null) {
         logger.info("Incoming request: " + nextLine);
         try {
           String[] commandParts = nextLine.trim().split(" ", 2);
@@ -1889,14 +1926,21 @@ public class Server {
           String payload = commandParts.length > 1 ? commandParts[1] : null;
 
           if (command == null) {
-            output.println("{\"error\": \"Incorrect command, try again\"}");
-          } else {
-            String response = serverFacade.handleRequest(command, payload);
-            output.println(response);
+            throw new InvalidInputException("Incorrect command, try again");
           }
+
+          String response = serverFacade.handleRequest(command, payload);
+          output.println(response);
+
+        } catch (UserNotFoundException | InvalidInputException e) {
+          logger.error("Error: " + e.getMessage());
+          output.println("{\"error\": \"" + e.getMessage() + "\"}");
         } catch (JsonProcessingException e) {
           logger.error("Error processing request: " + e.getMessage());
           output.println("{\"error\": \"Internal server error\"}");
+        } catch (Exception e) {
+          logger.error("Unexpected error: " + e.getMessage(), e);
+          output.println("{\"error\": \"Unexpected server error\"}");
         }
       }
     } catch (IOException e) {
