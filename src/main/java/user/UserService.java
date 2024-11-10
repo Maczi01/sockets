@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jooq.DSLContext;
+import org.jooq.impl.DSL;
 import org.mindrot.jbcrypt.BCrypt;
 
 public class UserService {
@@ -62,19 +63,25 @@ public class UserService {
 
       String hashedPassword = BCrypt.hashpw(user.getPassword(), BCrypt.gensalt());
 
-      if (create.fetchExists(
-          selectFrom(USERS).where(USERS.USERNAME.eq(user.getUsername()))
-      )) {
-        return "{\"error\": \"User already exists\"}";
-      }
+      return create.transactionResult(configuration -> {
+        DSLContext ctx = DSL.using(configuration);
 
-      create.insertInto(USERS)
-          .set(USERS.USERNAME, user.getUsername())
-          .set(USERS.PASSWORD, hashedPassword)
-          .set(USERS.ROLE, toUsersRole(user.getRole())) // Convert Role to jOOQ UsersRole
-          .execute();
+        if (ctx.fetchExists(
+            ctx.selectFrom(USERS).where(USERS.USERNAME.eq(user.getUsername()))
+        )) {
+          return "{\"error\": \"User already exists\"}";
+        }
 
-      return "{\"message\": \"User added successfully\"}";
+        // Insert the new user
+        ctx.insertInto(USERS)
+            .set(USERS.USERNAME, user.getUsername())
+            .set(USERS.PASSWORD, hashedPassword)
+            .set(USERS.ROLE, toUsersRole(user.getRole())) // Convert Role to jOOQ UsersRole
+            .execute();
+
+        return "{\"message\": \"User added successfully\"}";
+      });
+
     } catch (JsonProcessingException e) {
       return "{\"error\": \"Unable to add user\"}";
     }
