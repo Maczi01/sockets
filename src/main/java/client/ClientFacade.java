@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import config.Config;
 import config.ConfigReader;
+import exceptions.InvalidInputException;
+import exceptions.ServerException;
+import exceptions.UserNotFoundException;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -91,8 +94,7 @@ class ClientFacade {
 
   private void loginToApplication() {
     if (session.isLoggedIn()) {
-      logger.info("You are already logged in");
-      return;
+      throw new InvalidInputException("You are already logged in");
     }
     logger.info("Login to application");
     logger.info("Enter username: ");
@@ -101,6 +103,7 @@ class ClientFacade {
     String password = scanner.nextLine();
     String userDetails = String.format("{\"username\":\"%s\", \"password\":\"%s\"}", username, password);
     String response = messageServer("LOGIN " + userDetails);
+
     if (response.contains("successfully")) {
       try {
         JsonNode rootNode = mapper.readTree(response);
@@ -109,10 +112,10 @@ class ClientFacade {
         session.login(username, role);
         logger.info("Login successful. Welcome, " + username + "!");
       } catch (IOException e) {
-        logger.error("Error processing login response: " + e.getMessage());
+        throw new ServerException("Error processing login response", e);
       }
     } else {
-      logger.error("Login failed: " + response);
+      throw new UserNotFoundException("Login failed: User not found");
     }
   }
 

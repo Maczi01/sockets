@@ -2,6 +2,8 @@ package server;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import exceptions.InvalidInputException;
+import exceptions.UserNotFoundException;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -80,7 +82,7 @@ public class Server {
     ) {
       logger.info("Client connected");
       String nextLine;
-      while (!Objects.isNull(nextLine = input.readLine())) {
+      while ((nextLine = input.readLine()) != null) {
         logger.info("Incoming request: " + nextLine);
         try {
           String[] commandParts = nextLine.trim().split(" ", 2);
@@ -88,14 +90,21 @@ public class Server {
           String payload = commandParts.length > 1 ? commandParts[1] : null;
 
           if (command == null) {
-            output.println("{\"error\": \"Incorrect command, try again\"}");
-          } else {
-            String response = serverFacade.handleRequest(command, payload);
-            output.println(response);
+            throw new InvalidInputException("Incorrect command, try again");
           }
+
+          String response = serverFacade.handleRequest(command, payload);
+          output.println(response);
+
+        } catch (UserNotFoundException | InvalidInputException e) {
+          logger.error("Error: " + e.getMessage());
+          output.println("{\"error\": \"" + e.getMessage() + "\"}");
         } catch (JsonProcessingException e) {
           logger.error("Error processing request: " + e.getMessage());
           output.println("{\"error\": \"Internal server error\"}");
+        } catch (Exception e) {
+          logger.error("Unexpected error: " + e.getMessage(), e);
+          output.println("{\"error\": \"Unexpected server error\"}");
         }
       }
     } catch (IOException e) {
